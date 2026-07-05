@@ -9,3 +9,5 @@ CLAUDE.md
 *.app/
 .env
 user_config.ini
+dist/
+data/

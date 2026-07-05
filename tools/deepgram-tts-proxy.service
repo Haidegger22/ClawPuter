@@ -1,0 +1,14 @@
+[Unit]
+Description=Deepgram TTS Proxy for ClawPuter Cardputer
+After=network.target
+
+[Service]
+Type=simple
+User=pi
+Environment="DEEPGRAM_API_KEY=6cc98148f82206aa1606db578949ce7e463fa8fa"
+ExecStart=/usr/bin/python3 /home/pi/.openclaw/workspace/ClawPuter/tools/deepgram_tts_proxy.py --host 0.0.0.0 --port 8080
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

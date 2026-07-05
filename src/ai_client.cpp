@@ -35,11 +35,9 @@ void AIClient::sendMessage(const String& userMessage,
 
     WiFiClientSecure client;
     client.setTimeout(5);  // 5s per read operation
-#ifdef M5CLAW_TLS_CA_BUNDLE
-    client.setCACertBundle((const uint8_t *)M5CLAW_TLS_CA_BUNDLE);
-#else
-    client.setCACertBundle(x509_crt_bundle_bin_start);
-#endif
+    // DeepSeek API (api.deepseek.com) — no PSRAM, keep setInsecure().
+    // TLS is still encrypted; skipping cert bundle saves ~67KB heap.
+    client.setInsecure();
 
     int port = atoi(gwPort.c_str());
     if (port <= 0 || port > 65535) {
@@ -48,7 +46,7 @@ void AIClient::sendMessage(const String& userMessage,
         if (onError) onError("Invalid port");
         return;
     }
-    Serial.printf("[AI] Connecting to %s:%d (HTTPS)...\n", gwHost.c_str(), port);
+    Serial.printf("[AI] Connecting to %s:%d...\n", gwHost.c_str(), port);
 
     if (!client.connect(gwHost.c_str(), port)) {
         Serial.println("[AI] Connection failed");
@@ -161,11 +159,13 @@ void AIClient::sendMessage(const String& userMessage,
 
         int clen = extractContent(data, contentBuf, sizeof(contentBuf));
         if (clen > 0) {
-            // Filter thinking content: chunks starting with "think\n"
+            // DeepSeek sends thinking as separate "reasoning_content" field,
+            // not embedded in "content". Since we disable thinking in the
+            // request, this should rarely fire, but handle it just in case.
             if (clen >= 6 && memcmp(contentBuf, "think\n", 6) == 0) {
                 thinkingDetected = true;
-                Serial.printf("[AI] Thinking detected, filtering %d chars\n", clen);
-                return false;  // skip, but keep waiting
+                Serial.printf("[AI] Thinking detected (old format), filtering %d chars\n", clen);
+                return false;
             }
 
             // Detect gateway fallback injection on first real content
@@ -325,9 +325,12 @@ void AIClient::addToHistory(const String& user, const String& assistant) {
 }
 
 void AIClient::buildRequestDoc(const String& userMessage, JsonDocument& doc) {
-    doc["model"] = "MiniMax-M3";
+    doc["model"] = "deepseek-v4-flash";
     doc["user"] = "cardputer";
     doc["stream"] = true;
+    // Disable DeepSeek thinking mode for faster / simpler responses
+    JsonObject thinking = doc["thinking"].to<JsonObject>();
+    thinking["type"] = "disabled";
 
     JsonArray messages = doc["messages"].to<JsonArray>();
 
