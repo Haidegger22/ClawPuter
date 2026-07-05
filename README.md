@@ -1,5 +1,19 @@
 # ClawPuter 🦞
 
+> ### 🇨🇳 Форк от Haidegger22 (M3 MiniMax Edition)
+> Этот репозиторий — форк проекта [**bryant24hao/ClawPuter**](https://github.com/bryant24hao/ClawPuter) ⭐ 138
+> **Оригинальный автор:** [@bryant24hao](https://github.com/bryant24hao) — все оригинальные заслуги и дизайн ему.
+>
+> **Изменения в форке:**
+> - Прямое HTTPS-подключение к MiniMax M3 API (`api.minimax.io:443`) вместо LAN OpenClaw gateway
+> - WiFiClient → WiFiClientSecure (TLS) с x509_crt_bundle.bin
+> - Модель `"openclaw"` → `"MiniMax-M3"`
+> - Зашитые WiFi creds и API ключ через `build_flags`
+>
+> **Upstream:** https://github.com/bryant24hao/ClawPuter  ·  **Fork:** https://github.com/Haidegger22/ClawPuter  ·  **License:** MIT (upstream)
+>
+> ---
+
 [中文](README_CN.md)
 
 A pixel-art desktop companion running on M5Stack Cardputer (ESP32-S3). Features an OpenClaw-themed lobster character with animations, real-time weather, AI chat with voice input/TTS, and a synced macOS desktop pet.
@@ -298,6 +312,12 @@ See [full roadmap](docs/roadmap.md).
 ## Star History
 
 [![Star History Chart](https://api.star-history.com/svg?repos=bryant24hao/ClawPuter&type=Date)](https://star-history.com/#bryant24hao/ClawPuter&Date)
+
+## Credits & Acknowledgements
+
+This is a **fork** of [**bryant24hao/ClawPuter**](https://github.com/bryant24hao/ClawPuter) — all original design, animations, weather system, hydration mechanics, and OpenClaw integration are the work of [bryant24hao](https://github.com/bryant24hao). 
+
+**What the fork changed:** replaced the LAN OpenClaw gateway transport with direct HTTPS streaming to MiniMax M3 (`api.minimax.io`). The upstream is the canonical source — please file issues and feature requests there.
 
 ## License
 
