@@ -43,7 +43,8 @@ void AIClient::sendMessage(const String& userMessage,
         if (onError) onError("Invalid port");
         return;
     }
-    Serial.printf("[AI] Connecting to %s:%d...\n", gwHost.c_str(), port);
+    Serial.printf("[AI] Connecting to '%s':'%s' (port %d) with token '%s'...\n",
+        gwHost.c_str(), gwPort.c_str(), port, gwToken.c_str());
 
     if (!client.connect(gwHost.c_str(), port)) {
         Serial.println("[AI] Connection failed");
@@ -70,46 +71,39 @@ void AIClient::sendMessage(const String& userMessage,
 
     Serial.printf("[AI] Sent, heap=%u\n", ESP.getFreeHeap());
 
-    // Read HTTP response headers — zero heap allocation (stack buffer only)
-    // Python BaseHTTPServer (HTTP/1.0) закрывает соединение сразу после ответа.
-    // Из-за этого может быть race condition: connected() уже false, а данные
-    // ещё не дошли до WiFi-буфера. Ждём с задержкой, давая время на буфер.
+    // Read HTTP response headers using readStringUntil (проверено, надёжно)
     unsigned long deadline = millis() + 30000;
     bool httpOk = false;
     bool chunked = false;
-    char hdrBuf[256];
-    int hdrLen = 0;
-    while (millis() < deadline) {
-        if (client.available()) {
-            char c = client.read();
-            if (c == '\n') {
-                if (hdrLen > 0 && hdrBuf[hdrLen - 1] == '\r') hdrLen--;
-                hdrBuf[hdrLen] = '\0';
-                if (hdrLen == 0) break; // пустая строка = конец заголовков
-                if (strstr(hdrBuf, "HTTP/") == hdrBuf && strstr(hdrBuf, "200")) httpOk = true;
-                if (strstr(hdrBuf, "chunked")) chunked = true;
-                hdrLen = 0;
-            } else if (hdrLen < (int)sizeof(hdrBuf) - 1) {
-                hdrBuf[hdrLen++] = c;
-            }
-        } else if (client.connected()) {
-            delay(5);  // соединение живо, но данных пока нет
-        } else {
-            // Соединение закрыто сервером. Даём 100ms на буферизацию.
-            delay(50);
-            if (!client.available()) break;  // действительно пусто
-        }
+
+    // Даём время на буферизацию данных перед первым read
+    unsigned long waitStart = millis();
+    while (!client.available() && millis() - waitStart < 500) { delay(1); }
+
+    // Читаем заголовки построчно через readStringUntil
+    while (client.available() && millis() < deadline) {
+        String line = client.readStringUntil('\n');
+        line.trim();  // убираем \r
+        Serial.printf("[AI] HDR: %s\n", line.c_str());
+
+        if (line.length() == 0) break;  // пустая строка = конец заголовков
+        if (line.startsWith("HTTP/") && line.indexOf("200") >= 0) httpOk = true;
+        if (line.indexOf("chunked") >= 0) chunked = true;
     }
 
     if (!httpOk) {
-        // Диагностика: печатаем что пришло в заголовках
-        Serial.printf("[AI] HTTP fail! hdrBuf='%s' chunked=%d ok=%d avail=%d conn=%d\n",
-            hdrBuf, chunked, httpOk, client.available(), client.connected());
+        Serial.println("[AI] HTTP error: status line doesn't contain 200");
+        // Дополнительная диагностика: читаем оставшиеся данные
+        while (client.available() && millis() - deadline < 5000) {
+            String extra = client.readStringUntil('\n');
+            Serial.printf("[AI] EXTRA: %s\n", extra.c_str());
+        }
         client.stop();
         busy = false;
         if (onError) onError("HTTP error");
         return;
     }
+    Serial.println("[AI] HTTP 200 OK");
 
     // Parse SSE stream using zero-heap-allocation approach:
     // - Stack char arrays for chunk/line parsing (no String in hot loop)
@@ -258,27 +252,31 @@ void AIClient::sendMessage(const String& userMessage,
             if (fullResponse.length() > (unsigned)(pixelArtMode ? 400 : 300)) break;
         }
     } else {
-        // Non-chunked: read byte-by-byte (same zero-alloc approach)
-        // Багфикс: внешний while должен быть безусловным по таймауту,
-        // потому что при HTTP/1.0 прокси закрывает соединение РАНЬШЕ,
-        // чем приходят последние байты SSE. Проверку connected()+available()
-        // делаем ВНУТРИ цикла, а не в условии.
+        // Non-chunked: read SSE lines via readStringUntil (надёжнее ручного байт-парсинга)
         while (!isTimedOut()) {
             if (!client.connected() && !client.available()) {
-                delay(10); continue;  // ждём пока буфер заполнится
+                // Прокси закрыл соединение. Ждём 200ms на буферизацию последних данных.
+                delay(200);
+                if (!client.available()) break;  // действительно пусто
             }
             if (!client.available()) { delay(5); continue; }
-            char c = client.read();
-            if (c == '\n') {
-                lineBuf[lineLen] = '\0';
-                if (lineLen > 0 && lineBuf[lineLen-1] == '\r') lineBuf[--lineLen] = '\0';
-                if (lineLen > 6 && memcmp(lineBuf, "data: ", 6) == 0) {
-                    if (processSSELine(lineBuf + 6)) break;
-                }
-                lineLen = 0;
-            } else if (lineLen < (int)sizeof(lineBuf) - 1) {
-                lineBuf[lineLen++] = c;
+            
+            String line = client.readStringUntil('\n');
+            line.trim();
+            if (line.length() == 0) continue;
+            
+            if (line.startsWith("data: ")) {
+                String data = line.substring(6);
+                data.trim();
+                // Копируем в lineBuf для processSSELine
+                int len = data.length();
+                if (len > (int)sizeof(lineBuf) - 1) len = sizeof(lineBuf) - 1;
+                memcpy(lineBuf, data.c_str(), len);
+                lineBuf[len] = '\0';
+                
+                if (processSSELine(lineBuf)) break;
             }
+            
             if (fullResponse.length() > (unsigned)(pixelArtMode ? 400 : 300)) break;
         }
     }
