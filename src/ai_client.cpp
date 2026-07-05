@@ -1,7 +1,7 @@
 #include "ai_client.h"
 #include "config.h"
 #include "utils.h"
-#include <WiFiClientSecure.h>
+#include <WiFiClient.h>
 #include <ArduinoJson.h>
 
 #ifndef M5CLAW_TLS_CA_BUNDLE
@@ -33,11 +33,8 @@ void AIClient::sendMessage(const String& userMessage,
     }
     busy = true;
 
-    WiFiClientSecure client;
-    client.setTimeout(5);  // 5s per read operation
-    // DeepSeek API (api.deepseek.com) — no PSRAM, keep setInsecure().
-    // TLS is still encrypted; skipping cert bundle saves ~67KB heap.
-    client.setInsecure();
+    WiFiClient client;
+    client.setTimeout(10);  // 10s timeout for proxy connection
 
     int port = atoi(gwPort.c_str());
     if (port <= 0 || port > 65535) {

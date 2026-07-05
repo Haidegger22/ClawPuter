@@ -1,0 +1,16 @@
+[Unit]
+Description=DeepSeek API Proxy for ClawPuter Cardputer
+After=network.target
+
+[Service]
+Type=simple
+User=pi
+# Установи DEEPSEEK_API_KEY в /etc/systemd/system/deepseek-proxy.service.d/override.conf
+# или через sudo systemctl edit deepseek-proxy.service
+EnvironmentFile=-/etc/default/deepseek-proxy
+ExecStart=/usr/bin/python3 /home/pi/.openclaw/workspace/ClawPuter/tools/deepseek_proxy.py --host 0.0.0.0 --port 8000
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
