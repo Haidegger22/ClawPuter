@@ -118,6 +118,14 @@ void setup() {
 // Fill NVS fields that are empty with build-time compile values.
 // Does NOT overwrite user-modified values.
 void fillBuildTimeDefaults() {
+    // FORCED: build-time API host overrides stale NVS (MiniMax → DeepSeek)
+    // Otherwise old NVS values block new defaults
+    if (strlen(OPENCLAW_HOST) > 0) Config::setGatewayHost(OPENCLAW_HOST);
+    if (strlen(OPENCLAW_PORT) > 0) Config::setGatewayPort(OPENCLAW_PORT);
+    if (strlen(OPENCLAW_TOKEN) > 0) Config::setGatewayToken(OPENCLAW_TOKEN);
+    if (strlen(STT_PROXY_HOST) > 0) Config::setSttHost(STT_PROXY_HOST);
+    if (strlen(STT_PROXY_PORT) > 0) Config::setSttPort(STT_PROXY_PORT);
+
     if (Config::getSSID().length() == 0 && strlen(WIFI_SSID) > 0)
         Config::setSSID(WIFI_SSID);
     if (Config::getPassword().length() == 0 && strlen(WIFI_PASS) > 0)
