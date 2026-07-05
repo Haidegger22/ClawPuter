@@ -7,3 +7,5 @@
 .DS_Store
 CLAUDE.md
 *.app/
+.env
+user_config.ini

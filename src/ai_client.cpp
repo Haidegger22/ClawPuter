@@ -1,8 +1,13 @@
 #include "ai_client.h"
 #include "config.h"
 #include "utils.h"
-#include <WiFiClient.h>
+#include <WiFiClientSecure.h>
 #include <ArduinoJson.h>
+
+#ifndef M5CLAW_TLS_CA_BUNDLE
+// fallback (will be overridden by build_flags -DM5CLAW_TLS_CA_BUNDLE=...)
+extern const uint8_t x509_crt_bundle_bin_start[] asm("_binary_data_cert_x509_crt_bundle_bin_start");
+#endif
 
 void AIClient::begin(const String& key, const String& host,
                      const String& port, const String& token) {
@@ -28,8 +33,13 @@ void AIClient::sendMessage(const String& userMessage,
     }
     busy = true;
 
-    WiFiClient client;
+    WiFiClientSecure client;
     client.setTimeout(5);  // 5s per read operation
+#ifdef M5CLAW_TLS_CA_BUNDLE
+    client.setCACertBundle((const uint8_t *)M5CLAW_TLS_CA_BUNDLE);
+#else
+    client.setCACertBundle(x509_crt_bundle_bin_start);
+#endif
 
     int port = atoi(gwPort.c_str());
     if (port <= 0 || port > 65535) {
@@ -38,7 +48,7 @@ void AIClient::sendMessage(const String& userMessage,
         if (onError) onError("Invalid port");
         return;
     }
-    Serial.printf("[AI] Connecting to %s:%d...\n", gwHost.c_str(), port);
+    Serial.printf("[AI] Connecting to %s:%d (HTTPS)...\n", gwHost.c_str(), port);
 
     if (!client.connect(gwHost.c_str(), port)) {
         Serial.println("[AI] Connection failed");
@@ -315,7 +325,7 @@ void AIClient::addToHistory(const String& user, const String& assistant) {
 }
 
 void AIClient::buildRequestDoc(const String& userMessage, JsonDocument& doc) {
-    doc["model"] = "openclaw";
+    doc["model"] = "MiniMax-M3";
     doc["user"] = "cardputer";
     doc["stream"] = true;
 
