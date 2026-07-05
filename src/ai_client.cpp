@@ -147,10 +147,10 @@ void AIClient::sendMessage(const String& userMessage,
     // Stack-allocated buffers — no heap allocation in streaming loop
     char sizeBuf[16];
     int sizeLen = 0;
-    char lineBuf[512];
+    char lineBuf[1024];
     int lineLen = 0;
-    char contentBuf[128];
-    char filteredBuf[128];
+    char contentBuf[256];
+    char filteredBuf[256];
 
     // Rolling idle timeout (overflow-safe) + thinking model support
     unsigned long lastActivity = millis();
@@ -213,7 +213,8 @@ void AIClient::sendMessage(const String& userMessage,
         long chunkRemain = 0;
         bool streamDone = false;
 
-        while (!streamDone && (client.connected() || client.available()) && !isTimedOut()) {
+        while (!streamDone && !isTimedOut()) {
+            if (!client.connected() && !client.available()) { delay(5); continue; }
             if (!client.available()) { delay(1); continue; }
             char c = client.read();
 
@@ -257,11 +258,15 @@ void AIClient::sendMessage(const String& userMessage,
             if (fullResponse.length() > (unsigned)(pixelArtMode ? 400 : 300)) break;
         }
     } else {
-        // Non-chunked: read byte-by-byte into lineBuf (same zero-alloc approach)
-        while ((client.connected() || client.available()) && !isTimedOut()) {
-            // Прокси HTTP/1.0 закрывает соединение. Если буфер пуст —
-            // даём время на появление данных перед выходом.
-            if (!client.connected() && !client.available()) { delay(10); continue; }
+        // Non-chunked: read byte-by-byte (same zero-alloc approach)
+        // Багфикс: внешний while должен быть безусловным по таймауту,
+        // потому что при HTTP/1.0 прокси закрывает соединение РАНЬШЕ,
+        // чем приходят последние байты SSE. Проверку connected()+available()
+        // делаем ВНУТРИ цикла, а не в условии.
+        while (!isTimedOut()) {
+            if (!client.connected() && !client.available()) {
+                delay(10); continue;  // ждём пока буфер заполнится
+            }
             if (!client.available()) { delay(5); continue; }
             char c = client.read();
             if (c == '\n') {
