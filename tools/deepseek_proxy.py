@@ -65,25 +65,13 @@ class DeepSeekProxyHandler(BaseHTTPRequestHandler):
 
             # Проксируем ответ обратно
             self.send_response(resp.status)
-            # Прокидываем заголовки стриминга
             content_type = resp.headers.get("Content-Type", "")
-            if "text/event-stream" in content_type:
-                self.send_header("Content-Type", "text/event-stream")
-                self.send_header("Cache-Control", "no-cache")
-                self.send_header("Connection", "close")
-                # Не chunked — Cardputer плохо парсит chunked SSE
-                # Передаём как есть
-            else:
-                self.send_header("Content-Type", content_type)
-
-            # Передаём Content-Length если есть
-            cl = resp.headers.get("Content-Length")
-            if cl:
-                self.send_header("Content-Length", cl)
-
+            self.send_header("Content-Type", content_type)
+            self.send_header("Connection", "close")  # всегда close — Cardputer так ждёт
+            self.send_header("Cache-Control", "no-cache")
             self.end_headers()
 
-            # Стримим ответ
+            # Стримим ответ (SSE или plain JSON)
             while True:
                 chunk = resp.read(4096)
                 if not chunk:

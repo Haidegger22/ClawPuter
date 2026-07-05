@@ -71,12 +71,15 @@ void AIClient::sendMessage(const String& userMessage,
     Serial.printf("[AI] Sent, heap=%u\n", ESP.getFreeHeap());
 
     // Read HTTP response headers — zero heap allocation (stack buffer only)
+    // Используем client.available() || client.connected() потому что Python
+    // BaseHTTPServer (HTTP/1.0) закрывает соединение сразу после ответа.
+    // Если проверять только client.connected() — можем выйти до чтения заголовков.
     unsigned long deadline = millis() + 30000;
     bool httpOk = false;
     bool chunked = false;
     char hdrBuf[256];
     int hdrLen = 0;
-    while (client.connected() && millis() < deadline) {
+    while ((client.connected() || client.available()) && millis() < deadline) {
         if (!client.available()) { delay(10); continue; }
         char c = client.read();
         if (c == '\n') {
@@ -247,6 +250,9 @@ void AIClient::sendMessage(const String& userMessage,
     } else {
         // Non-chunked: read byte-by-byte into lineBuf (same zero-alloc approach)
         while ((client.connected() || client.available()) && !isTimedOut()) {
+            // Прокси HTTP/1.0 закрывает соединение. Если буфер пуст —
+            // даём время на появление данных перед выходом.
+            if (!client.connected() && !client.available()) { delay(10); continue; }
             if (!client.available()) { delay(5); continue; }
             char c = client.read();
             if (c == '\n') {
