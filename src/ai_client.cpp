@@ -71,31 +71,40 @@ void AIClient::sendMessage(const String& userMessage,
     Serial.printf("[AI] Sent, heap=%u\n", ESP.getFreeHeap());
 
     // Read HTTP response headers — zero heap allocation (stack buffer only)
-    // Используем client.available() || client.connected() потому что Python
-    // BaseHTTPServer (HTTP/1.0) закрывает соединение сразу после ответа.
-    // Если проверять только client.connected() — можем выйти до чтения заголовков.
+    // Python BaseHTTPServer (HTTP/1.0) закрывает соединение сразу после ответа.
+    // Из-за этого может быть race condition: connected() уже false, а данные
+    // ещё не дошли до WiFi-буфера. Ждём с задержкой, давая время на буфер.
     unsigned long deadline = millis() + 30000;
     bool httpOk = false;
     bool chunked = false;
     char hdrBuf[256];
     int hdrLen = 0;
-    while ((client.connected() || client.available()) && millis() < deadline) {
-        if (!client.available()) { delay(10); continue; }
-        char c = client.read();
-        if (c == '\n') {
-            // Strip trailing \r
-            if (hdrLen > 0 && hdrBuf[hdrLen - 1] == '\r') hdrLen--;
-            hdrBuf[hdrLen] = '\0';
-            if (hdrLen == 0) break; // empty line = end of headers
-            if (strstr(hdrBuf, "HTTP/") == hdrBuf && strstr(hdrBuf, "200")) httpOk = true;
-            if (strstr(hdrBuf, "chunked")) chunked = true;
-            hdrLen = 0;
-        } else if (hdrLen < (int)sizeof(hdrBuf) - 1) {
-            hdrBuf[hdrLen++] = c;
+    while (millis() < deadline) {
+        if (client.available()) {
+            char c = client.read();
+            if (c == '\n') {
+                if (hdrLen > 0 && hdrBuf[hdrLen - 1] == '\r') hdrLen--;
+                hdrBuf[hdrLen] = '\0';
+                if (hdrLen == 0) break; // пустая строка = конец заголовков
+                if (strstr(hdrBuf, "HTTP/") == hdrBuf && strstr(hdrBuf, "200")) httpOk = true;
+                if (strstr(hdrBuf, "chunked")) chunked = true;
+                hdrLen = 0;
+            } else if (hdrLen < (int)sizeof(hdrBuf) - 1) {
+                hdrBuf[hdrLen++] = c;
+            }
+        } else if (client.connected()) {
+            delay(5);  // соединение живо, но данных пока нет
+        } else {
+            // Соединение закрыто сервером. Даём 100ms на буферизацию.
+            delay(50);
+            if (!client.available()) break;  // действительно пусто
         }
     }
 
     if (!httpOk) {
+        // Диагностика: печатаем что пришло в заголовках
+        Serial.printf("[AI] HTTP fail! hdrBuf='%s' chunked=%d ok=%d avail=%d conn=%d\n",
+            hdrBuf, chunked, httpOk, client.available(), client.connected());
         client.stop();
         busy = false;
         if (onError) onError("HTTP error");
